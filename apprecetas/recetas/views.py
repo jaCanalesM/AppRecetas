@@ -48,6 +48,11 @@ class RecetasView(APIView):
         except Exception as e:
             return JsonResponse({"message": "Debe adjuntar una foto"}, status=HTTPStatus.BAD_REQUEST)
         
+        if request.FILES("foto").content_type=="image/jpeg" or request.FILES("foto").content_type=="image/png":
+            pass
+        else:
+            return JsonResponse({"message": "Solo se permiten archivos de imagen (JPEG, PNG)"}, status=HTTPStatus.BAD_REQUEST)
+        
         try:
             filename = fs.save(foto, request.FILES['file'])
             uploaded_file_url = fs.url(filename)
@@ -61,3 +66,78 @@ class RecetasView(APIView):
         except Exception as e:
             return JsonResponse({"message": "Error al crear la receta"}, status=HTTPStatus.BAD_REQUEST)
     
+    
+    def put(self, request, id):
+        try:
+            receta = models.Receta.objects.filter(id=id).get()
+        except models.Receta.DoesNotExist:
+            raise Http404
+
+        if request.data.get("nombre")==None or not request.data["nombre"].strip():
+            return JsonResponse({"message": "El campo nombre es obligatorio"}, status=HTTPStatus.BAD_REQUEST)
+        if request.data.get("descripcion")==None or not request.data["descripcion"].strip():
+            return JsonResponse({"message": "El campo descripcion es obligatorio"}, status=HTTPStatus.BAD_REQUEST)
+        if request.data.get("ingredientes")==None or not request.data["ingredientes"].strip():
+            return JsonResponse({"message": "El campo ingredientes es obligatorio"}, status=HTTPStatus.BAD_REQUEST)
+        if request.data.get("pasos")==None or not request.data["pasos"].strip():
+            return JsonResponse({"message": "El campo pasos es obligatorio"}, status=HTTPStatus.BAD_REQUEST)
+        if request.data.get("foto")==None or not request.data["foto"].strip():
+            return JsonResponse({"message": "El campo foto es obligatorio"}, status=HTTPStatus.BAD_REQUEST)
+        if request.data.get("categoria")==None or not request.data["categoria"].strip():
+            return JsonResponse({"message": "El campo categoria es obligatorio"}, status=HTTPStatus.BAD_REQUEST)
+
+        # Validar que la categoria exista
+        try:
+            categoria = models.Categoria.objects.filter(id=request.data["categoria"]).get()
+        except models.Categoria.DoesNotExist:
+            return JsonResponse({"message": "La categoria no existe"}, status=HTTPStatus.BAD_REQUEST)
+
+        # Validar que no exista una receta con el mismo nombre (excepto la actual)
+        if models.Receta.objects.filter(nombre=request.data["nombre"]).exclude(id=id).exists():
+            return JsonResponse({"message": "Ya existe una receta con ese nombre"}, status=HTTPStatus.BAD_REQUEST)
+
+        fs = FileSystemStorage()
+        try:
+            foto = f"{datetime.timestamp(fecha)}{os.path.splitext(str(request.FILES['file']))[1]}"
+        except Exception as e:
+            return JsonResponse({"message": "Debe adjuntar una foto"}, status=HTTPStatus.BAD_REQUEST)
+
+        if request.FILES("foto").content_type=="image/jpeg" or request.FILES("foto").content_type=="image/png":
+            pass
+        else:
+            return JsonResponse({"message": "Solo se permiten archivos de imagen (JPEG, PNG)"}, status=HTTPStatus.BAD_REQUEST)
+
+        try:
+            filename = fs.save(foto, request.FILES['file'])
+            uploaded_file_url = fs.url(filename)
+        except Exception as e:
+            return JsonResponse({"message": "Error al guardar la foto"}, status=HTTPStatus.BAD_REQUEST)
+
+        try:
+            receta.nombre = request.data["nombre"]
+            receta.descripcion = request.data["descripcion"]
+            receta.ingredientes = request.data["ingredientes"]
+            receta.pasos = request.data["pasos"]
+            receta.foto = uploaded_file_url
+            receta.categoria_id = request.data["categoria"]
+            receta.save()
+            return JsonResponse({"message": "Receta actualizada correctamente"}, status=HTTPStatus.OK)
+        except Exception as e:
+            return JsonResponse({"message": "Error al actualizar la receta"}, status=HTTPStatus.BAD_REQUEST)
+        
+        
+    def delete(self, request, id):
+        try:
+            receta = models.Receta.objects.filter(id=id).get()
+        except models.Receta.DoesNotExist:
+            raise Http404
+        
+        try:
+            receta.delete()
+            return JsonResponse({"message": "Receta eliminada correctamente"}, status=HTTPStatus.OK)
+            #borrar la foto del servidor
+            os.remove(f".media/{receta.foto}")
+            #borrar la receta de la base de datos
+            Receta.objects.filter(id=id).delete()
+        except Exception as e:
+            return JsonResponse({"message": "Error al eliminar la receta"}, status=HTTPStatus.BAD_REQUEST)
